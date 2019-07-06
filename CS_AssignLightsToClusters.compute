@@ -1,0 +1,142 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+// Axis-Aligned bounding box
+struct AABB
+{
+	float4 Min;
+	float4 Max;
+};
+
+struct Sphere
+{
+	float3 c;   // Center point.
+	float  r;   // Radius.
+};
+
+RWStructuredBuffer<uint> RWPointLightIndexCounter_Cluster;// : register(u2);
+RWStructuredBuffer<uint2> RWPointLightGrid_Cluster;// : register(u4);
+RWStructuredBuffer<uint> RWPointLightIndexList_Cluster;// : register(u6);
+
+StructuredBuffer<AABB> ClusterAABBs;// : register(t1);
+StructuredBuffer<float4> PointLights;// : register(t8);
+
+uint PointLightCount;
+float4x4 _CameraLastViewMatrix;
+
+float4 WorldToView(float4 posWorld)
+{
+	float4 posView = mul(_CameraLastViewMatrix, posWorld);
+	//posView.z *= -1;
+	return posView;
+}
+
+
+
+
+// Compute the square distance between a point p and an AABB b.
+// Source: Real-time collision detection, Christer Ericson (2005)
+float SqDistancePointAABB(float3 p, AABB b)
+{
+	float sqDistance = 0.0f;
+
+	for (int i = 0; i < 3; ++i)
+	{
+		float v = p[i];
+
+		if (v < b.Min[i]) sqDistance += pow(b.Min[i] - v, 2);
+		if (v > b.Max[i]) sqDistance += pow(v - b.Max[i], 2);
+	}
+
+	return sqDistance;
+}
+
+// Check to see if a sphere is interesecting an AABB
+// Source: Real-time collision detection, Christer Ericson (2005)
+bool SphereInsideAABB(Sphere sphere, AABB aabb)
+{
+	float sqDistance = SqDistancePointAABB(sphere.c, aabb);
+
+	return sqDistance <= sphere.r * sphere.r;
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+#define NUM_THREADS 1024
+groupshared uint gs_ClusterIndex1D;
+groupshared AABB gs_ClusterAABB;
+
+groupshared uint gs_PointLightCount;
+groupshared uint gs_SpotLightCount;
+groupshared uint gs_PointLightStartOffset;
+groupshared uint gs_SpotLightStartOffset;
+groupshared uint gs_PointLightList[1024];
+groupshared uint gs_SpotLightList[1024];
+
+
+struct ComputeShaderInput
+{
+	uint3 GroupID           : SV_GroupID;           // 3D index of the thread group in the dispatch.
+	uint3 GroupThreadID     : SV_GroupThreadID;     // 3D index of local thread ID in a thread group.
+	uint3 DispatchThreadID  : SV_DispatchThreadID;  // 3D index of global thread ID in the dispatch.
+	uint  GroupIndex        : SV_GroupIndex;        // Flattened local index of the thread within a thread group.
+};
+
+#define AppendLight( lightIndex, counter, lightList ) \
+    InterlockedAdd( counter, 1, index ); \
+    if ( index < 1024 ) \
+    { \
+        lightList[index] = lightIndex; \
+    }
+
+[numthreads(NUM_THREADS, 1, 1)]
+void CSMain (ComputeShaderInput IN)
+{	
+	uint i, index;
+
+	if (IN.GroupIndex == 0)
+	{
+		gs_PointLightCount = 0;
+		gs_SpotLightCount = 0;
+
+		gs_ClusterIndex1D = IN.GroupID.x;
+		gs_ClusterAABB = ClusterAABBs[gs_ClusterIndex1D];
+	}
+
+	GroupMemoryBarrierWithGroupSync();
+
+	// Intersect point lights against AABB.
+	for (i = IN.GroupIndex; i < PointLightCount; i += NUM_THREADS)
+	{
+		//if ( PointLights[i].Enabled )
+		{
+			float4 pointLight = PointLights[i];
+			float3 pointLightPosView = WorldToView(float4(pointLight.xyz, 1)).xyz;// mul(float4(pointLight.xyz, 1), _CameraLastViewMatrix).xyz;
+			Sphere sphere = { pointLightPosView, pointLight.w };
+
+			if (SphereInsideAABB(sphere, gs_ClusterAABB))
+			{
+				AppendLight(i, gs_PointLightCount, gs_PointLightList);
+			}
+		}
+	}
+
+	GroupMemoryBarrierWithGroupSync();
+
+	// Now update the global light grids with the light lists and light counts.
+	if (IN.GroupIndex == 0)
+	{
+		// Update light grid for point lights.
+		InterlockedAdd(RWPointLightIndexCounter_Cluster[0], gs_PointLightCount, gs_PointLightStartOffset);
+		RWPointLightGrid_Cluster[gs_ClusterIndex1D] = uint2(gs_PointLightStartOffset, gs_PointLightCount);
+	}
+
+	GroupMemoryBarrierWithGroupSync();
+
+	// Now update the global light index lists with the group shared light lists.
+	for (i = IN.GroupIndex; i < gs_PointLightCount; i += NUM_THREADS)
+	{
+		RWPointLightIndexList_Cluster[gs_PointLightStartOffset + i] = gs_PointLightList[i];
+	}
+}
