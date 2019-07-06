@@ -100,6 +100,7 @@ public class Script_ClusterBasedLighting : MonoBehaviour
         GL.wireframe = true;
 
         mtlDebugCluster.SetBuffer("ClusterAABBs", cb_ClusterAABBs);
+        mtlDebugCluster.SetMatrix("_CameraWorldMatrix", _camera.transform.localToWorldMatrix);
 
         mtlDebugCluster.SetPass(0);
         Graphics.DrawProceduralNow(MeshTopology.Points, m_DimData.clusterDimXYZ);

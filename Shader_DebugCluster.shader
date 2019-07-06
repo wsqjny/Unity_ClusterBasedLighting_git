@@ -44,6 +44,8 @@ Shader "ClusterBasedLightingGit/Shader_DebugCluster"
 
 			StructuredBuffer<AABB> ClusterAABBs;// : register(t1);
 
+			float4x4 _CameraWorldMatrix;
+
 			bool CMin(float3 a, float3 b)
 			{
 				if (a.x < b.x && a.y < b.y && a.z < b.z)
@@ -66,7 +68,8 @@ Shader "ClusterBasedLightingGit/Shader_DebugCluster"
 
 			float4 WorldToProject(float4 posWorld)
 			{	
-				float4 posVP0 = UnityObjectToClipPos(posWorld);
+				float4 l_posWorld = mul(_CameraWorldMatrix, posWorld);
+				float4 posVP0 = UnityObjectToClipPos(l_posWorld);
 				return posVP0;
 			}
 
