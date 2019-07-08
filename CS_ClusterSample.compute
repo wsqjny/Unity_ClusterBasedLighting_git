@@ -1,0 +1,27 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+#include "Cgs_ClusterCommon.cginc"
+
+Texture2D DepthTexture;
+RWStructuredBuffer<float> RWClusterFlags;
+
+[numthreads(32,32,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+	int2 texCoord = id.xy;
+	float fDepth = DepthTexture.Load(uint3(texCoord, 0)).x;
+
+	if (fDepth > 0)
+	{
+		float4 viewPos = ScreenToView(float4(texCoord, fDepth, 1));
+		viewPos.z *= -1;
+		
+		// Compute the 3D cluster index.
+		uint3 clusterIndex3D = ComputeClusterIndex3D(texCoord, viewPos.z);
+		// Convert to 1D cluster index.
+		uint clusterIndex1D = ComputeClusterIndex1D(clusterIndex3D);
+
+		RWClusterFlags[clusterIndex1D] = 1.0;
+		return;
+	}
+}

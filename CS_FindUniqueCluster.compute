@@ -1,0 +1,20 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+#define NUM_THREADS 1024
+
+
+// A buffer that contains a set flag for clusters that contain samples.
+StructuredBuffer<float> ClusterFlags;
+// For each unique cluster, append the 1D cluster index.
+RWStructuredBuffer<uint> RWUniqueClusters;
+
+[numthreads(NUM_THREADS, 1, 1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+	uint clusterID = id.x;
+	if (ClusterFlags[clusterID] > 0.5)
+	{
+		uint i = RWUniqueClusters.IncrementCounter();
+		RWUniqueClusters[i] = clusterID;
+	}
+}

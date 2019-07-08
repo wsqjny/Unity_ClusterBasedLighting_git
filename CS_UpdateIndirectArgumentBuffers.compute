@@ -1,0 +1,21 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+ByteAddressBuffer ClusterCounter;
+RWByteAddressBuffer AssignLightsToClustersIndirectArgumentBuffer;
+RWByteAddressBuffer DebugClustersIndirectArgumentBuffer;
+
+[numthreads(1,1,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+	// Read the cluster counter.
+	uint clusterCount = ClusterCounter.Load(0);
+
+	// Update the indirect argument buffers.
+	AssignLightsToClustersIndirectArgumentBuffer.Store3(0, uint3(clusterCount, 1, 1)); // NumThreadGroupsX, NumThreadGroupsY, NumThreadGroupsZ
+
+	//if (UpdateUniqueClusters)
+	{
+		DebugClustersIndirectArgumentBuffer.Store4(0, uint4(clusterCount, 1, 0, 0)); // VertexCountPerInstance, InstanceCount, StartVertexLocation, StartInstanceLocation
+	}
+}

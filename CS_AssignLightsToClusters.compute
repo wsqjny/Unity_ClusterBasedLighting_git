@@ -1,18 +1,7 @@
 ﻿// Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel CSMain
 
-// Axis-Aligned bounding box
-struct AABB
-{
-	float4 Min;
-	float4 Max;
-};
-
-struct Sphere
-{
-	float3 c;   // Center point.
-	float  r;   // Radius.
-};
+#include"Cgs_ClusterCommon.cginc"
 
 RWStructuredBuffer<uint> RWPointLightIndexCounter_Cluster;// : register(u2);
 RWStructuredBuffer<uint2> RWPointLightGrid_Cluster;// : register(u4);
@@ -31,37 +20,6 @@ float4 WorldToView(float4 posWorld)
 	return posView;
 }
 
-
-
-
-// Compute the square distance between a point p and an AABB b.
-// Source: Real-time collision detection, Christer Ericson (2005)
-float SqDistancePointAABB(float3 p, AABB b)
-{
-	float sqDistance = 0.0f;
-
-	for (int i = 0; i < 3; ++i)
-	{
-		float v = p[i];
-
-		if (v < b.Min[i]) sqDistance += pow(b.Min[i] - v, 2);
-		if (v > b.Max[i]) sqDistance += pow(v - b.Max[i], 2);
-	}
-
-	return sqDistance;
-}
-
-// Check to see if a sphere is interesecting an AABB
-// Source: Real-time collision detection, Christer Ericson (2005)
-bool SphereInsideAABB(Sphere sphere, AABB aabb)
-{
-	float sqDistance = SqDistancePointAABB(sphere.c, aabb);
-
-	return sqDistance <= sphere.r * sphere.r;
-}
-
-
-
 ////////////////////////////////////////////////////////////////////////////////////////////////
 #define NUM_THREADS 1024
 groupshared uint gs_ClusterIndex1D;
@@ -74,14 +32,6 @@ groupshared uint gs_SpotLightStartOffset;
 groupshared uint gs_PointLightList[1024];
 groupshared uint gs_SpotLightList[1024];
 
-
-struct ComputeShaderInput
-{
-	uint3 GroupID           : SV_GroupID;           // 3D index of the thread group in the dispatch.
-	uint3 GroupThreadID     : SV_GroupThreadID;     // 3D index of local thread ID in a thread group.
-	uint3 DispatchThreadID  : SV_DispatchThreadID;  // 3D index of global thread ID in the dispatch.
-	uint  GroupIndex        : SV_GroupIndex;        // Flattened local index of the thread within a thread group.
-};
 
 #define AppendLight( lightIndex, counter, lightList ) \
     InterlockedAdd( counter, 1, index ); \
