@@ -1,8 +1,7 @@
 ﻿// Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel CSMain
 #pragma target 5.0
-#include"Cgs_ClusterCommon.cginc"
-
+#include "Cgs_ClusterCommon.cginc"
 
 Texture2D SourceTex;
 Texture2D DepthTexture;

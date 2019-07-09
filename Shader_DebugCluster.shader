@@ -44,8 +44,9 @@ Shader "ClusterBasedLightingGit/Shader_DebugCluster"
 
 			StructuredBuffer<AABB> ClusterAABBs;// : register(t1);
 			StructuredBuffer<uint2> PointLightGrid_Cluster;
+			StructuredBuffer<uint>	UniqueClusters;
 
-			float4x4 _CameraWorldMatrix;
+			float4x4 _ViewInvMatrix;
 
 			bool CMin(float3 a, float3 b)
 			{
@@ -69,14 +70,19 @@ Shader "ClusterBasedLightingGit/Shader_DebugCluster"
 
 			float4 WorldToProject(float4 posWorld)
 			{	
-				float4 l_posWorld = mul(_CameraWorldMatrix, posWorld);
-				float4 posVP0 = UnityObjectToClipPos(l_posWorld);
-				return posVP0;
+				float4 l_posWorld = posWorld;
+				l_posWorld.z *= -1;
+				float4 l_posViewInv = mul(_ViewInvMatrix, l_posWorld);
+				//float4 l_posView = mul(_ViewMatrix, l_posViewInv);
+				//float4 posVP = mul(_ProjectMatrix, l_posView);
+				float4 posVP = UnityObjectToClipPos(l_posViewInv);
+				//float4 posVP0 = UnityObjectToClipPos(posWorld);
+				return posVP;
 			}
 
 			VertexShaderOutput main_VS(uint VertexID : SV_VertexID)
 			{
-				uint clusterID = VertexID; ;// UniqueClusters[VertexID];// VertexID;
+				uint clusterID = UniqueClusters[VertexID];// VertexID;
 
 				VertexShaderOutput vsOutput = (VertexShaderOutput)0;
 

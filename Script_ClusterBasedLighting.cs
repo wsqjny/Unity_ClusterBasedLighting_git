@@ -50,6 +50,7 @@ public class Script_ClusterBasedLighting : MonoBehaviour
     public ComputeShader    cs_AssignLightsToClusts;
     public ComputeShader    cs_FindUniqueClusters;
     public ComputeShader    cs_UpdateIndirectArgumentBuffers;
+    public ComputeShader    cs_DebugLightCount;
 
     private ComputeBuffer   cb_ClusterAABBs;
     private ComputeBuffer   cb_ClusterPointLightIndexCounter;
@@ -80,10 +81,13 @@ public class Script_ClusterBasedLighting : MonoBehaviour
     private List<Material>  lst_Mtl;
     private List<Mesh>      lst_Mesh;
     private List<Transform> lst_TF;
-    
+
+    public bool bUpdateCluster = true;
+    public Texture2D texLightLountTex;
 
     private RenderTexture _rtColor;
     private RenderTexture _rtDepth;
+    private RenderTexture _rtDebugLightCount;
 
     private Camera _camera;
 
@@ -91,6 +95,8 @@ public class Script_ClusterBasedLighting : MonoBehaviour
     private int m_ClusterGridBlockSize = 64;
     private int m_AVERAGE_OVERLAPPING_LIGHTS_PER_CLUSTER = 20;
     private int MAX_NUM_LIGHTS = 2 * 1024;
+
+    private Matrix4x4 mmatPreviousView;
 
     void Start()
     {
@@ -100,6 +106,10 @@ public class Script_ClusterBasedLighting : MonoBehaviour
         /// Init RT
         _rtColor = new RenderTexture(Screen.width, Screen.height, 24);
         _rtDepth = new RenderTexture(Screen.width, Screen.height, 24, RenderTextureFormat.Depth, RenderTextureReadWrite.Linear);
+
+        _rtDebugLightCount = new RenderTexture(Screen.width, Screen.height, 24);
+        _rtDebugLightCount.enableRandomWrite = true;
+        _rtDebugLightCount.Create();
 
 
         OnResize();
@@ -126,10 +136,13 @@ public class Script_ClusterBasedLighting : MonoBehaviour
         GL.Clear(true, true, Color.gray);
 
         UpdateLightBuffer();
-
+        UpdateCamera();
         Pass_DepthPre();
 
-        Pass_ClusterSample_CSVer();
+        if(bUpdateCluster)
+        {
+            Pass_ClusterSample_CSVer();
+        }
 
         Pass_FinduniqueCluster();
 
@@ -142,8 +155,10 @@ public class Script_ClusterBasedLighting : MonoBehaviour
         Graphics.SetRenderTarget(_rtColor.colorBuffer, _rtDepth.depthBuffer);
         Pass_DrawSceneColor();
         Pass_DebugCluster();
+        Pass_DebugLightCount();
 
         Graphics.Blit(_rtColor, destTexture);
+        Graphics.Blit(_rtDebugLightCount, destTexture);
     }
 
 
@@ -180,11 +195,13 @@ public class Script_ClusterBasedLighting : MonoBehaviour
 
         //Input
         cs_AssignLightsToClusts.SetInt("PointLightCount", lightList.Count);
-        cs_AssignLightsToClusts.SetMatrix("_CameraLastViewMatrix", _camera.transform.worldToLocalMatrix);
+        cs_AssignLightsToClusts.SetMatrix("_CameraLastViewMatrix", _camera.worldToCameraMatrix);
         cs_AssignLightsToClusts.SetBuffer(kernel, "PointLights", cb_PointLightPosRadius);
         cs_AssignLightsToClusts.SetBuffer(kernel, "ClusterAABBs", cb_ClusterAABBs);
+        cs_AssignLightsToClusts.SetBuffer(kernel, "UniqueClusters", cb_UniqueClusters);
 
-        cs_AssignLightsToClusts.Dispatch(kernel, m_DimData.clusterDimXYZ, 1, 1);
+        //cs_AssignLightsToClusts.Dispatch(kernel, m_DimData.clusterDimXYZ, 1, 1);
+        cs_AssignLightsToClusts.DispatchIndirect(kernel, cb_IAB_AssignLightsToClusters);
     }
 
     void Pass_DepthPre()
@@ -261,14 +278,33 @@ public class Script_ClusterBasedLighting : MonoBehaviour
 
         mtl_DebugCluster.SetBuffer("ClusterAABBs", cb_ClusterAABBs);
         mtl_DebugCluster.SetBuffer("PointLightGrid_Cluster", cb_ClusterPointLightGrid);
+        mtl_DebugCluster.SetBuffer("UniqueClusters", cb_UniqueClusters);
+        mtl_DebugCluster.SetMatrix("_ViewInvMatrix", mmatPreviousView.inverse);
 
-        mtl_DebugCluster.SetMatrix("_CameraWorldMatrix", _camera.transform.localToWorldMatrix);
-        
         mtl_DebugCluster.SetPass(0);
-        Graphics.DrawProceduralNow(MeshTopology.Points, m_DimData.clusterDimXYZ);
-        
+        //Graphics.DrawProceduralNow(MeshTopology.Points, m_DimData.clusterDimXYZ);
+        Graphics.DrawProceduralIndirectNow(MeshTopology.Points, cb_IAB_DrawDebugClusters);
+
         GL.wireframe = false;
     }
+
+    void Pass_DebugLightCount()
+    {
+        UpdateClusterCBuffer(cs_DebugLightCount);
+       
+        var projectionMatrix = GL.GetGPUProjectionMatrix(_camera.projectionMatrix, true);
+        var projectionMatrixInvers = projectionMatrix.inverse;
+        cs_DebugLightCount.SetMatrix(ShaderIDs.InverseProjectionMatrix, projectionMatrixInvers);
+
+        int kernel = cs_ComputeClusterAABB.FindKernel("CSMain");
+        cs_DebugLightCount.SetTexture(kernel, "RWDebugTexture", _rtDebugLightCount);
+        cs_DebugLightCount.SetTexture(kernel, "DepthTexture", _rtDepth);
+        cs_DebugLightCount.SetTexture(kernel, "LightCountHeatMapTex", texLightLountTex);
+        cs_DebugLightCount.SetTexture(kernel, "SourceTex", _rtColor);
+        cs_DebugLightCount.SetBuffer(kernel, "PointLightGrid_Cluster", cb_ClusterPointLightGrid);
+        cs_DebugLightCount.Dispatch(kernel, Mathf.CeilToInt(Screen.width / 32.0f), Mathf.CeilToInt(Screen.height / 32.0f), 1);
+    }
+
 
     void DrawMeshListNow()
     {
@@ -320,6 +356,15 @@ public class Script_ClusterBasedLighting : MonoBehaviour
         }
 
         cb_PointLightPosRadius.SetData(lightPosRatioList);
+    }
+
+    void UpdateCamera()
+    {
+        Matrix4x4 matCameraView = _camera.worldToCameraMatrix;
+        if (bUpdateCluster)
+        {
+            mmatPreviousView = matCameraView;
+        }
     }
 
     void CalculateMDim(Camera cam)

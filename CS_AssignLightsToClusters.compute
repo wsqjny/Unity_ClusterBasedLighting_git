@@ -7,6 +7,7 @@ RWStructuredBuffer<uint> RWPointLightIndexCounter_Cluster;// : register(u2);
 RWStructuredBuffer<uint2> RWPointLightGrid_Cluster;// : register(u4);
 RWStructuredBuffer<uint> RWPointLightIndexList_Cluster;// : register(u6);
 
+StructuredBuffer<uint>	UniqueClusters;
 StructuredBuffer<AABB> ClusterAABBs;// : register(t1);
 StructuredBuffer<float4> PointLights;// : register(t8);
 
@@ -16,7 +17,7 @@ float4x4 _CameraLastViewMatrix;
 float4 WorldToView(float4 posWorld)
 {
 	float4 posView = mul(_CameraLastViewMatrix, posWorld);
-	//posView.z *= -1;
+	posView.z *= -1;
 	return posView;
 }
 
@@ -50,7 +51,7 @@ void CSMain (ComputeShaderInput IN)
 		gs_PointLightCount = 0;
 		gs_SpotLightCount = 0;
 
-		gs_ClusterIndex1D = IN.GroupID.x;
+		gs_ClusterIndex1D = UniqueClusters[IN.GroupID.x];
 		gs_ClusterAABB = ClusterAABBs[gs_ClusterIndex1D];
 	}
 
