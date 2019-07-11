@@ -45,6 +45,8 @@ struct ShaderIDs
 #endif
 public class Script_ClusterBasedLighting : MonoBehaviour
 {
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    ///Compute Shaders
     public ComputeShader    cs_ComputeClusterAABB;
     public ComputeShader    cs_ClusterSample;
     public ComputeShader    cs_AssignLightsToClusts;
@@ -71,8 +73,8 @@ public class Script_ClusterBasedLighting : MonoBehaviour
     /// <summary>
     /// Light
     /// </summary>
-    public GameObject goPointLightGroup;
-    private List<Light> lightList;
+    public GameObject       go_PointLightGroup;
+    private List<Light>     lst_Light;
 
     /// <summary>
     /// SceneObject
@@ -82,12 +84,13 @@ public class Script_ClusterBasedLighting : MonoBehaviour
     private List<Mesh>      lst_Mesh;
     private List<Transform> lst_TF;
 
-    public bool bUpdateCluster = true;
-    public Texture2D texLightLountTex;
+    private RenderTexture   _rtColor;
+    private RenderTexture   _rtDepth;
+    private RenderTexture   _rtDebugLightCount;
 
-    private RenderTexture _rtColor;
-    private RenderTexture _rtDepth;
-    private RenderTexture _rtDebugLightCount;
+
+    public bool bUpdateCluster = true;
+    public Texture2D texLightLountTex;   
 
     private Camera _camera;
 
@@ -111,17 +114,18 @@ public class Script_ClusterBasedLighting : MonoBehaviour
         _rtDebugLightCount.enableRandomWrite = true;
         _rtDebugLightCount.Create();
 
-
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        /// On Reisze
         OnResize();
 
         ////////////////////////////////////////////////////////////////////////////////////////////////
         /// Init Light
         InitLightBuffer();
-        Light[] l_Parent = goPointLightGroup.GetComponentsInChildren<Light>();
-        lightList = new List<Light>();
+        Light[] l_Parent = go_PointLightGroup.GetComponentsInChildren<Light>();
+        lst_Light = new List<Light>();
         foreach (Light l in l_Parent)
         {
-            lightList.Add(l);
+            lst_Light.Add(l);
         }
 
         ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -154,11 +158,11 @@ public class Script_ClusterBasedLighting : MonoBehaviour
 
         Graphics.SetRenderTarget(_rtColor.colorBuffer, _rtDepth.depthBuffer);
         Pass_DrawSceneColor();
-        Pass_DebugCluster();
-        Pass_DebugLightCount();
+        //Pass_DebugCluster();
+        //Pass_DebugLightCount();
 
         Graphics.Blit(_rtColor, destTexture);
-        Graphics.Blit(_rtDebugLightCount, destTexture);
+        //Graphics.Blit(_rtDebugLightCount, destTexture);
     }
 
 
@@ -194,7 +198,7 @@ public class Script_ClusterBasedLighting : MonoBehaviour
         cs_AssignLightsToClusts.SetBuffer(kernel, "RWPointLightIndexList_Cluster", cb_ClusterPointLightIndexList);
 
         //Input
-        cs_AssignLightsToClusts.SetInt("PointLightCount", lightList.Count);
+        cs_AssignLightsToClusts.SetInt("PointLightCount", lst_Light.Count);
         cs_AssignLightsToClusts.SetMatrix("_CameraLastViewMatrix", _camera.worldToCameraMatrix);
         cs_AssignLightsToClusts.SetBuffer(kernel, "PointLights", cb_PointLightPosRadius);
         cs_AssignLightsToClusts.SetBuffer(kernel, "ClusterAABBs", cb_ClusterAABBs);
@@ -251,8 +255,6 @@ public class Script_ClusterBasedLighting : MonoBehaviour
         cs_UpdateIndirectArgumentBuffers.SetBuffer(kernel, "DebugClustersIndirectArgumentBuffer", cb_IAB_DrawDebugClusters);
         cs_UpdateIndirectArgumentBuffers.Dispatch(kernel, 1, 1, 1);
     }
-    
-
 
     void Pass_DrawSceneColor()
     {
@@ -305,7 +307,6 @@ public class Script_ClusterBasedLighting : MonoBehaviour
         cs_DebugLightCount.Dispatch(kernel, Mathf.CeilToInt(Screen.width / 32.0f), Mathf.CeilToInt(Screen.height / 32.0f), 1);
     }
 
-
     void DrawMeshListNow()
     {
         for (int i = 0; i < lst_Mesh.Count; i++)
@@ -350,7 +351,7 @@ public class Script_ClusterBasedLighting : MonoBehaviour
     void UpdateLightBuffer()
     {
         List<Vector4> lightPosRatioList = new List<Vector4>();
-        foreach (var lit in lightList)
+        foreach (var lit in lst_Light)
         {
             lightPosRatioList.Add(new Vector4(lit.transform.position.x, lit.transform.position.y, lit.transform.position.z, lit.range));
         }
